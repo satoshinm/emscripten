@@ -57,6 +57,7 @@ var LibraryGLFW = {
       };
       this.buttons = 0;
       this.keys = new Array();
+      this.joyLast = 0; // GLFW_JOYSTICK_1
       this.shouldClose = 0;
       this.title = null;
       this.windowPosFunc = null; // GLFWwindowposfun
@@ -70,6 +71,7 @@ var LibraryGLFW = {
       this.cursorPosFunc = null; // GLFWcursorposfun
       this.cursorEnterFunc = null; // GLFWcursorenterfun
       this.scrollFunc = null; // GLFWscrollfun
+      this.joystickFunc = null; // GLFWjoystickfun
       this.keyFunc = null; // GLFWkeyfun
       this.charFunc = null; // GLFWcharfun
       this.userptr = null;
@@ -379,6 +381,26 @@ var LibraryGLFW = {
 #endif
     },
 
+    onGamepadConnected: function(event) {
+			console.log("Gamepad connected at index %d: %s. %d buttons, %d axes.",
+				event.gamepad.index, event.gamepad.id,
+				event.gamepad.buttons.length, event.gamepad.axes.length);
+
+      if (!GLFW.active.joystickFunc) return;
+
+      var index = GLFW.active.joyLast++;
+      Module['dynCall_vii'](GLFW.active.joystickFunc, index, 0x00040001); // GLFW_CONNECTED
+    },
+
+    onGamepadDisconnected: function(event) {
+			consolevent.log("Gamepad disconnected from index %d: %s",
+				event.gamepad.index, event.gamepad.id);
+
+      if (!GLFW.active.joystickFunc) return;
+      // TODO: track id, remove
+      Module['dynCall_vii'](GLFW.active.joystickFunc, GLFW.active.joyLast, 0x00040002); // GLFW_DISCONNECTED
+    },
+
     onKeydown: function(event) {
       GLFW.onKeyChanged(event, 1); // GLFW_PRESS or GLFW_REPEAT
 
@@ -626,6 +648,12 @@ var LibraryGLFW = {
       if (GLFW.active.id == win.id) {
         document.title = win.title;
       }
+    },
+
+    setJoystickCallback: function(winid, cbfun) {
+      var win = GLFW.WindowFromId(winid);
+      if (!win) return;
+      win.joystickFunc = cbfun;
     },
 
     setKeyCallback: function(winid, cbfun) {
@@ -941,6 +969,8 @@ var LibraryGLFW = {
     GLFW.windows = new Array()
     GLFW.active = null;
 
+    window.addEventListener("gamepadconnected", GLFW.onGamepadConnected, true);
+    window.addEventListener("gamepaddisconnected", GLFW.onGamepadDisconnected, true);
     window.addEventListener("keydown", GLFW.onKeydown, true);
     window.addEventListener("keypress", GLFW.onKeyPress, true);
     window.addEventListener("keyup", GLFW.onKeyup, true);
@@ -959,6 +989,8 @@ var LibraryGLFW = {
   },
 
   glfwTerminate: function() {
+    window.removeEventListener("gamepadconnected", GLFW.onGamepadConnected, true);
+    window.removeEventListener("gamepaddisconnected", GLFW.onGamepadDisconnected, true);
     window.removeEventListener("keydown", GLFW.onKeydown, true);
     window.removeEventListener("keypress", GLFW.onKeyPress, true);
     window.removeEventListener("keyup", GLFW.onKeyup, true);
@@ -1339,8 +1371,6 @@ var LibraryGLFW = {
 
   glfwCreateWindowSurface: function(instance, winid, allocator, surface) { throw "glfwCreateWindowSurface is not implemented."; },
 
-  glfwSetJoystickCallback: function(cbfun) { throw "glfwSetJoystickCallback is not implemented."; },
-
   glfwJoystickPresent: function(joy) { throw "glfwJoystickPresent is not implemented."; },
 
   glfwGetJoystickAxes: function(joy, count) { throw "glfwGetJoystickAxes is not implemented."; },
@@ -1348,6 +1378,10 @@ var LibraryGLFW = {
   glfwGetJoystickButtons: function(joy, count) { throw "glfwGetJoystickButtons is not implemented."; },
 
   glfwGetJoystickName: function(joy) { throw "glfwGetJoystickName is not implemented."; },
+
+  glfwSetJoystickCallback: function(cbfun) {
+    GLFW.setJoystickCallback(GLFW.active.id, cbfun);
+  },
 
   glfwSetClipboardString: function(win, string) {},
 
