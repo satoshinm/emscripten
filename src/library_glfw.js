@@ -58,6 +58,8 @@ var LibraryGLFW = {
       this.buttons = 0;
       this.keys = new Array();
       this.joyLast = 0; // GLFW_JOYSTICK_1
+      this.joy2index  = {};
+      this.index2joy = {};
       this.shouldClose = 0;
       this.title = null;
       this.windowPosFunc = null; // GLFWwindowposfun
@@ -388,17 +390,29 @@ var LibraryGLFW = {
 
       if (!GLFW.active.joystickFunc) return;
 
-      var index = GLFW.active.joyLast++;
-      Module['dynCall_vii'](GLFW.active.joystickFunc, index, 0x00040001); // GLFW_CONNECTED
+      // HTML5 Gamepad API reuses indexes
+      // glfw joystick API spreads them out
+      // http://www.glfw.org/docs/latest/input_guide.html#joystick
+      // "Once a joystick is detected, it keeps its assigned index until it is disconnected,
+      // so as joysticks are connected and disconnected, they will become spread out."
+      var joy = GLFW.active.joyLast++;
+      GLFW.active.joy2index[joy] = event.gamepad.index;
+      GLFW.active.index2joy[event.gamepad.index] = joy;
+      Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040001); // GLFW_CONNECTED
     },
 
     onGamepadDisconnected: function(event) {
-			consolevent.log("Gamepad disconnected from index %d: %s",
+			console.log("Gamepad disconnected from index %d: %s",
 				event.gamepad.index, event.gamepad.id);
 
       if (!GLFW.active.joystickFunc) return;
-      // TODO: track id, remove
-      Module['dynCall_vii'](GLFW.active.joystickFunc, GLFW.active.joyLast, 0x00040002); // GLFW_DISCONNECTED
+
+      var joy = GLFW.active.index2joy[event.gamepad.index];
+
+      Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040002); // GLFW_DISCONNECTED
+
+      delete GLFW.active.index2joy[event.gamepad.index];
+      delete GLFW.active.joy2index[joy];
     },
 
     onKeydown: function(event) {
