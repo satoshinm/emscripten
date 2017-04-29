@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -69,25 +70,26 @@ void main_2(void *arg) {
   emscripten_run_script("window.addNewGamepad('Pad Thai', 4, 16)");
   emscripten_run_script("window.addNewGamepad('Pad Kee Mao', 0, 4)");
   // Check that the joysticks exist properly.
-  printf("glfwJoystickPresent(GLFW_JOYSTICK_1) = %d\n", glfwJoystickPresent(GLFW_JOYSTICK_1));
-  printf("glfwJoystickPresent(GLFW_JOYSTICK_2) = %d\n", glfwJoystickPresent(GLFW_JOYSTICK_2));
-  EM_ASM(alert(1));
-
   assert(glfwJoystickPresent(GLFW_JOYSTICK_1));
   assert(glfwJoystickPresent(GLFW_JOYSTICK_2));
 
-  // TODO
-  /*
-  assert(!SDL_JoystickOpened(0));
-  assert(!SDL_JoystickOpened(1));
-  SDL_Joystick* pad1 = SDL_JoystickOpen(0);
-  assert(SDL_JoystickOpened(0));
-  assert(SDL_JoystickIndex(pad1) == 0);
-  assert(strncmp(SDL_JoystickName(0), "Pad Thai", 9) == 0);
-  assert(strncmp(SDL_JoystickName(1), "Pad Kee Mao", 12) == 0);
-  assert(SDL_JoystickNumAxes(pad1) == 4);
-  assert(SDL_JoystickNumButtons(pad1) == 16);
+  assert(strcmp(glfwGetJoystickName(GLFW_JOYSTICK_1), "Pad Thai") == 0);
+  assert(strcmp(glfwGetJoystickName(GLFW_JOYSTICK_2), "Pad Kee Mao") == 0);
 
+  int axes_count = 0;
+  int buttons_count = 0;
+
+  glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axes_count);
+  glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
+  assert(axes_count == 4);
+  assert(buttons_count == 16);
+
+  glfwGetJoystickAxes(GLFW_JOYSTICK_2, &axes_count);
+  glfwGetJoystickButtons(GLFW_JOYSTICK_2, &buttons_count);
+  assert(axes_count == 0);
+  assert(buttons_count == 4);
+
+  /*
   // By default, SDL will automatically process events. Test this behavior, and then disable it.
   assert(SDL_JoystickEventState(SDL_QUERY) == SDL_ENABLE);
   SDL_JoystickEventState(SDL_DISABLE);
