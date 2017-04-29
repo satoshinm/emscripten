@@ -13,9 +13,51 @@ GLFWwindow* g_window;
 void render();
 void error_callback(int error, const char* description);
 
+int joy_connected = -1;
+
 void render() {
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
+
+  printf("joy_connected = %d\n", joy_connected);
+  if (joy_connected == -1) return;
+
+  static struct {
+    int axis_count;
+    float axis[16];
+    int button_count;
+    unsigned char buttons[16];
+  } last_gamepad_state = {0};
+
+
+  int axis_count = 0;
+  const float *axis = glfwGetJoystickAxes(joy_connected, &axis_count);
+
+  int button_count = 0;
+  const unsigned char *buttons = glfwGetJoystickButtons(joy_connected, &button_count);
+
+  printf("axis_count = %d, button_count = %d\n", axis_count, button_count);
+
+
+  last_gamepad_state.axis_count = axis_count;
+  for (int i = 0; i < axis_count; ++i) {
+    if (last_gamepad_state.axis[i] != axis[i]) {
+      printf("axis %d = %f\n", i, axis[i]);
+    }
+    printf("axis unchanged %d = %f\n", i, axis[i]);
+
+    last_gamepad_state.axis[i] = axis[i];
+  }
+
+  last_gamepad_state.button_count =  button_count;
+  for (int i = 0; i < button_count; ++i) {
+    if (last_gamepad_state.buttons[i] != buttons[i]) {
+      printf("button %d = %d\n", i, buttons[i]);
+    }
+    printf("button unchanged %d = %d\n", i, buttons[i]);
+
+    last_gamepad_state.buttons[i] = buttons[i];
+  }
 }
 
 void joystick_callback(int joy, int event)
@@ -23,8 +65,10 @@ void joystick_callback(int joy, int event)
   printf("joystick_callback %d %d\n", joy, event);
   if (event == GLFW_CONNECTED) {
     printf("Joystick %d was connected\n", joy);
+    if (joy != -1) joy_connected = joy;
   } else if (event == GLFW_DISCONNECTED) {
     printf("Joystick %d was disconnected\n", joy);
+    if (joy == joy_connected) joy_connected = -1;
   }
 }
 
