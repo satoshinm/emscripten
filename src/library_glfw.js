@@ -399,8 +399,8 @@ var LibraryGLFW = {
       GLFW.active.joys[joy] = {
         index: event.gamepad.index,
         id: event.gamepad.id,
-        buttons: event.gamepad.buttons.length,
-        axes: event.gamepad.axes.length
+        buttons: event.gamepad.buttons,
+        axes: event.gamepad.axes
       };
       GLFW.active.index2joy[event.gamepad.index] = joy;
       Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040001); // GLFW_CONNECTED
@@ -673,6 +673,19 @@ var LibraryGLFW = {
       var win = GLFW.WindowFromId(winid);
       if (!win) return;
       win.joystickFunc = cbfun;
+    },
+
+    refreshJoystick: function(joy) {
+      // TODO: refresh all joysticks, and call from render loop?
+      var gamepad = navigator.getGamepads()[joy];
+      if (!gamepad) return;
+
+      GLFW.active.joys[joy] = {
+        index: gamepad.index,
+        id: gamepad.id,
+        buttons: gamepad.buttons,
+        axes: gamepad.axes
+      };
     },
 
     setKeyCallback: function(winid, cbfun) {
@@ -1396,16 +1409,29 @@ var LibraryGLFW = {
 
   // TODO: read on refresh loop, return cached
   glfwGetJoystickAxes: function(joy, count) {
-    var state = navigator.getGamepads()[joy];
-    if (!state) return [];
+    GLFW.refreshJoystick(joy);
 
+    var state = GLFW.active.joys[joy];
+    //console.log('state=',state);
+    if (!state || !state.axes) {
+      setValue(count, 0, 'i32');
+      return;
+    }
+
+    setValue(count, state.axes.length, 'i32');
     return state.axes;
   },
 
   glfwGetJoystickButtons: function(joy, count) {
-    var state = navigator.getGamepads()[joy];
-    if (!state) return [];
+    GLFW.refreshJoystick(joy);
 
+    var state = GLFW.active.joys[joy];
+    if (!state || !state.buttons) {
+      setValue(count, 0, 'i32');
+      return;
+    }
+
+    setValue(count, state.buttons.length, 'i32');
     return state.buttons;
   },
 
