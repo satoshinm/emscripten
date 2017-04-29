@@ -58,7 +58,7 @@ var LibraryGLFW = {
       this.buttons = 0;
       this.keys = new Array();
       this.joyLast = 0; // GLFW_JOYSTICK_1
-      this.joy2index  = {};
+      this.joys = {};
       this.index2joy = {};
       this.shouldClose = 0;
       this.title = null;
@@ -396,7 +396,12 @@ var LibraryGLFW = {
       // "Once a joystick is detected, it keeps its assigned index until it is disconnected,
       // so as joysticks are connected and disconnected, they will become spread out."
       var joy = GLFW.active.joyLast++;
-      GLFW.active.joy2index[joy] = event.gamepad.index;
+      GLFW.active.joys[joy] = {
+        index: event.gamepad.index,
+        id: event.gamepad.id,
+        buttons: event.gamepad.buttons.length,
+        axes: event.gamepad.axes.length
+      };
       GLFW.active.index2joy[event.gamepad.index] = joy;
       Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040001); // GLFW_CONNECTED
     },
@@ -412,7 +417,7 @@ var LibraryGLFW = {
       Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040002); // GLFW_DISCONNECTED
 
       delete GLFW.active.index2joy[event.gamepad.index];
-      delete GLFW.active.joy2index[joy];
+      delete GLFW.active.joys[joy];
     },
 
     onKeydown: function(event) {
@@ -1386,7 +1391,7 @@ var LibraryGLFW = {
   glfwCreateWindowSurface: function(instance, winid, allocator, surface) { throw "glfwCreateWindowSurface is not implemented."; },
 
   glfwJoystickPresent: function(joy) {
-    return GLFW.active.joy2index[joy] !== undefined;
+    return GLFW.active.joys[joy] !== undefined;
   },
 
   glfwGetJoystickAxes: function(joy, count) { throw "glfwGetJoystickAxes is not implemented."; },
