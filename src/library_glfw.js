@@ -383,10 +383,6 @@ var LibraryGLFW = {
     },
 
     onGamepadConnected: function(event) {
-			console.log("Gamepad connected at index %d: %s. %d buttons, %d axes.",
-				event.gamepad.index, event.gamepad.id,
-				event.gamepad.buttons.length, event.gamepad.axes.length);
-
       if (!GLFW.active.joystickFunc) return;
 
       // HTML5 Gamepad API reuses indexes
@@ -406,9 +402,6 @@ var LibraryGLFW = {
     },
 
     onGamepadDisconnected: function(event) {
-			console.log("Gamepad disconnected from index %d: %s",
-				event.gamepad.index, event.gamepad.id);
-
       if (!GLFW.active.joystickFunc) return;
 
       var joy = GLFW.active.index2joy[event.gamepad.index];
@@ -678,7 +671,6 @@ var LibraryGLFW = {
 
     refreshJoystick: function(joy) {
       // TODO: refresh all joysticks, and call from render loop?
-
       var j = GLFW.active.joys[joy];
 
       var gamepad = navigator.getGamepads()[j.index];
@@ -686,16 +678,13 @@ var LibraryGLFW = {
 
       j.buttonsCount = gamepad.buttons.length;
       for (var i = 0; i < gamepad.buttons.length; ++i) {
-        //j.buttons[i] = gamepad.buttons[i];
         setValue(j.buttons + i, gamepad.buttons[i].pressed, 'i8');
       }
 
       j.axesCount = gamepad.axes.length;
       for (var i = 0; i < gamepad.axes.length; ++i) {
-        j.axes[i] = gamepad.axes[i];
         setValue(j.axes + i*4, gamepad.axes[i], 'float');
       }
-      //console.log(j);
     },
 
     setKeyCallback: function(winid, cbfun) {
@@ -1417,12 +1406,10 @@ var LibraryGLFW = {
     return GLFW.active.joys[joy] !== undefined;
   },
 
-  // TODO: read on refresh loop, return cached
   glfwGetJoystickAxes: function(joy, count) {
     GLFW.refreshJoystick(joy);
 
     var state = GLFW.active.joys[joy];
-    //console.log('state=',state);
     if (!state || !state.axes) {
       setValue(count, 0, 'i32');
       return;
