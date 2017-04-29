@@ -1385,7 +1385,9 @@ var LibraryGLFW = {
 
   glfwCreateWindowSurface: function(instance, winid, allocator, surface) { throw "glfwCreateWindowSurface is not implemented."; },
 
-  glfwJoystickPresent: function(joy) { throw "glfwJoystickPresent is not implemented."; },
+  glfwJoystickPresent: function(joy) {
+    return GLFW.active.joy2index[joy] !== undefined;
+  },
 
   glfwGetJoystickAxes: function(joy, count) { throw "glfwGetJoystickAxes is not implemented."; },
 
