@@ -1398,7 +1398,9 @@ var LibraryGLFW = {
 
   glfwGetJoystickButtons: function(joy, count) { throw "glfwGetJoystickButtons is not implemented."; },
 
-  glfwGetJoystickName: function(joy) { throw "glfwGetJoystickName is not implemented."; },
+  glfwGetJoystickName: function(joy) {
+    return GLFW.active.joys[joy].id;
+  },
 
   glfwSetJoystickCallback: function(cbfun) {
     GLFW.setJoystickCallback(GLFW.active.id, cbfun);
