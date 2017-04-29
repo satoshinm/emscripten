@@ -1394,9 +1394,20 @@ var LibraryGLFW = {
     return GLFW.active.joys[joy] !== undefined;
   },
 
-  glfwGetJoystickAxes: function(joy, count) { throw "glfwGetJoystickAxes is not implemented."; },
+  // TODO: read on refresh loop, return cached
+  glfwGetJoystickAxes: function(joy, count) {
+    var state = navigator.getGamepads()[joy];
+    if (!state) return [];
 
-  glfwGetJoystickButtons: function(joy, count) { throw "glfwGetJoystickButtons is not implemented."; },
+    return state.axes;
+  },
+
+  glfwGetJoystickButtons: function(joy, count) {
+    var state = navigator.getGamepads()[joy];
+    if (!state) return [];
+
+    return state.buttons;
+  },
 
   glfwGetJoystickName: function(joy) {
     return GLFW.active.joys[joy].id;
