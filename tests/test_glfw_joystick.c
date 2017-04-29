@@ -67,6 +67,7 @@ void joystick_callback(int joy, int event)
 }
 
 void main_2(void *arg) {
+  printf("Testing adding new gamepads\n");
   emscripten_run_script("window.addNewGamepad('Pad Thai', 4, 16)");
   emscripten_run_script("window.addNewGamepad('Pad Kee Mao', 0, 4)");
   // Check that the joysticks exist properly.
@@ -89,12 +90,31 @@ void main_2(void *arg) {
   assert(axes_count == 0);
   assert(buttons_count == 4);
 
+  // Button events.
+  printf("Testing buttons\n");
+  const unsigned char *buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
+  assert(buttons_count == 16);
+  printf("initial\n");
+  assert(buttons[0] == 0);
+  emscripten_run_script("window.simulateGamepadButtonDown(0, 1)");
+  buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
+  assert(buttons_count == 16);
+  printf("down\n");
+  // TODO: fix
+  assert(buttons[0] == 1);
+
+  emscripten_run_script("window.simulateGamepadButtonUp(0, 1)");
+  buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
+  assert(buttons_count == 16);
+  printf("up\n");
+  assert(buttons[0] == 0);
+  printf("done\n");
+
   /*
   // By default, SDL will automatically process events. Test this behavior, and then disable it.
   assert(SDL_JoystickEventState(SDL_QUERY) == SDL_ENABLE);
   SDL_JoystickEventState(SDL_DISABLE);
   assert(SDL_JoystickEventState(SDL_QUERY) == SDL_DISABLE);
-  // Button events.
   emscripten_run_script("window.simulateGamepadButtonDown(0, 1)");
   // We didn't tell SDL to automatically update this joystick's state.
   assertNoJoystickEvent();
