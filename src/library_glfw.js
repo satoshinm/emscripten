@@ -399,8 +399,8 @@ var LibraryGLFW = {
       GLFW.active.joys[joy] = {
         index: event.gamepad.index,
         id: event.gamepad.id,
-        buttons: event.gamepad.buttons,
-        axes: event.gamepad.axes
+        buttons: allocate(new Array(event.gamepad.buttons.length), 'float', ALLOC_NORMAL),
+        axes: allocate(event.gamepad.axes, 'float', ALLOC_NORMAL)
       };
       GLFW.active.index2joy[event.gamepad.index] = joy;
       Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040001); // GLFW_CONNECTED
@@ -415,6 +415,8 @@ var LibraryGLFW = {
       var joy = GLFW.active.index2joy[event.gamepad.index];
 
       Module['dynCall_vii'](GLFW.active.joystickFunc, joy, 0x00040002); // GLFW_DISCONNECTED
+
+      // TODO: free memory .axes, .buttons
 
       delete GLFW.active.index2joy[event.gamepad.index];
       delete GLFW.active.joys[joy];
@@ -677,15 +679,24 @@ var LibraryGLFW = {
 
     refreshJoystick: function(joy) {
       // TODO: refresh all joysticks, and call from render loop?
-      var gamepad = navigator.getGamepads()[joy];
+
+      var j = GLFW.active.joys[joy];
+
+      var gamepad = navigator.getGamepads()[j.index];
       if (!gamepad) return;
 
-      GLFW.active.joys[joy] = {
-        index: gamepad.index,
-        id: gamepad.id,
-        buttons: gamepad.buttons,
-        axes: gamepad.axes
-      };
+      j.buttonsCount = gamepad.buttons.length;
+      for (var i = 0; i < gamepad.buttons.length; ++i) {
+        //j.buttons[i] = gamepad.buttons[i];
+        setValue(j.buttons + i, gamepad.buttons[i].pressed, 'i8');
+      }
+
+      j.axesCount = gamepad.axes.length;
+      for (var i = 0; i < gamepad.axes.length; ++i) {
+        j.axes[i] = gamepad.axes[i];
+        setValue(j.axes + i*4, gamepad.axes[i], 'float');
+      }
+      //console.log(j);
     },
 
     setKeyCallback: function(winid, cbfun) {
@@ -1418,7 +1429,7 @@ var LibraryGLFW = {
       return;
     }
 
-    setValue(count, state.axes.length, 'i32');
+    setValue(count, state.axesCount, 'i32');
     return state.axes;
   },
 
@@ -1431,7 +1442,7 @@ var LibraryGLFW = {
       return;
     }
 
-    setValue(count, state.buttons.length, 'i32');
+    setValue(count, state.buttonsCount, 'i32');
     return state.buttons;
   },
 
