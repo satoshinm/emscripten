@@ -397,7 +397,7 @@ var LibraryGLFW = {
       var joy = GLFW.active.joyLast++;
       GLFW.active.joys[joy] = {
         index: event.gamepad.index,
-        id: event.gamepad.id,
+        id: allocate(intArrayFromString(event.gamepad.id), 'i8', ALLOC_NORMAL),
         buttons: allocate(new Array(event.gamepad.buttons.length), 'float', ALLOC_NORMAL),
         axes: allocate(event.gamepad.axes, 'float', ALLOC_NORMAL)
       };

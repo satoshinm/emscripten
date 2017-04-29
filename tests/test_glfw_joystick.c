@@ -64,7 +64,7 @@ void joystick_callback(int joy, int event)
 {
   printf("joystick_callback %d %d\n", joy, event);
   if (event == GLFW_CONNECTED) {
-    printf("Joystick %d was connected\n", joy);
+    printf("Joystick %d was connected: %s\n", joy, glfwGetJoystickName(joy));
     joy_connected = joy; // use the most recently connected joystick
   } else if (event == GLFW_DISCONNECTED) {
     printf("Joystick %d was disconnected\n", joy);
