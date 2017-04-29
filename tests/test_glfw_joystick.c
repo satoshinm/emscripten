@@ -94,21 +94,16 @@ void main_2(void *arg) {
   printf("Testing buttons\n");
   const unsigned char *buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
   assert(buttons_count == 16);
-  printf("initial\n");
   assert(buttons[0] == 0);
   emscripten_run_script("window.simulateGamepadButtonDown(0, 1)");
   buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
   assert(buttons_count == 16);
-  printf("down\n");
-  // TODO: fix
-  assert(buttons[0] == 1);
+  assert(buttons[1] == 1);
 
   emscripten_run_script("window.simulateGamepadButtonUp(0, 1)");
   buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
   assert(buttons_count == 16);
-  printf("up\n");
-  assert(buttons[0] == 0);
-  printf("done\n");
+  assert(buttons[1] == 0);
 
   /*
   // By default, SDL will automatically process events. Test this behavior, and then disable it.
