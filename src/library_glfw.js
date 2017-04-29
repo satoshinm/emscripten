@@ -13,7 +13,6 @@
  * What it does not but should probably do:
  * - Transmit events when glfwPollEvents, glfwWaitEvents or glfwSwapBuffers is
  *    called. Events callbacks are called as soon as event are received.
- * - Joystick support.
  * - Input modes.
  * - Gamma ramps.
  * - Video modes.
