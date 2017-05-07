@@ -16,7 +16,6 @@
  * - Input modes.
  * - Gamma ramps.
  * - Video modes.
- * - Monitors.
  * - Clipboard (not possible from javascript?).
  * - Multiple windows.
  * - Error codes && messages through callback.
@@ -87,6 +86,7 @@ var LibraryGLFW = {
     windows: null,
     monitors: null,
     monitorString: null,
+    videoMode: null,
     versionString: null,
     initialTime: null,
     extensions: null,
@@ -972,6 +972,27 @@ var LibraryGLFW = {
       Module.ctx = Browser.destroyContext(Module['canvas'], true, true);
     },
 
+    getScreenVideoMode: function() {
+      if (!GLFW.videoMode) {
+        GLFW.videoMode = allocate([0, 0, 0, 0, 0, 0], 'i32', ALLOC_NORMAL);
+      }
+
+      setValue(GLFW.videoMode + 0*4, window.screen.width, 'i32');
+      setValue(GLFW.videoMode + 1*4, window.screen.height, 'i32');
+
+      var redBits = window.screen.colorDepth / 3;
+      var greenBits = window.screen.colorDepth / 3;
+      var blueBits = window.screen.colorDepth / 3;
+      setValue(GLFW.videoMode + 2*4, redBits, 'i32');
+      setValue(GLFW.videoMode + 3*4, greenBits, 'i32');
+      setValue(GLFW.videoMode + 4*4, blueBits, 'i32');
+
+      var refreshRate = 60; // TODO: estimate from requestAnimationFrame?
+      setValue(GLFW.videoMode + 5*4, refreshRate, 'i32');
+
+      return GLFW.videoMode;
+    },
+
     swapBuffers: function(winid) {
     },
 
@@ -1166,14 +1187,15 @@ var LibraryGLFW = {
     GLFW.monitorFunc = cbfun;
   },
 
-  // TODO: implement
   glfwGetVideoModes: function(monitor, count) {
-    setValue(count, 0, 'i32');
-    return 0;
+    setValue(count, 1, 'i32');
+
+    return GLFW.getScreenVideoMode();
   },
 
-  // TODO: implement
-  glfwGetVideoMode: function(monitor) { return 0; },
+  glfwGetVideoMode: function(monitor) {
+    return GLFW.getScreenVideoMode();
+  },
 
   // TODO: implement
   glfwSetGamma: function(monitor, gamma) { },
@@ -1263,6 +1285,8 @@ var LibraryGLFW = {
   glfwGetWindowMonitor: function(winid) {
     var win = GLFW.WindowFromId(winid);
     if (!win) return 0;
+    if (!GLFW.active.fullscreen) return 0;
+
     return win.monitor;
   },
 
@@ -1326,7 +1350,28 @@ var LibraryGLFW = {
 
   glfwFocusWindow: function(winid) {},
 
-  glfwSetWindowMonitor: function(winid, monitor, xpos, ypos, width, height, refreshRate) { throw "glfwSetWindowMonitor not implemented."; },
+  glfwSetWindowMonitor: function(winid, monitor, xpos, ypos, width, height, refreshRate) {
+    GLFW.active.monitor = monitor; // TODO: mask on whether actually in fullscreen
+    if (monitor) {
+      // TODO: use emscripten_request_fullscreen_strategy()
+      Module.requestFullscreen(1, 1);
+    } else {
+      // Null monitor exits fullscreen
+      // TODO: resize and reposition to given dimensions
+      // TODO: use emscripten_exit_fullscreen()
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else {
+        return {{{ cDefine('EMSCRIPTEN_RESULT_NOT_SUPPORTED') }}};
+      }
+    }
+  },
 
   glfwCreateCursor: function(image, xhot, yhot) {},
 
