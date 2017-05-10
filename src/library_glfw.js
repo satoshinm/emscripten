@@ -748,7 +748,8 @@ var LibraryGLFW = {
     },
 
     onDrop: function(event) {
-      if (!GLFW.active.dropFunc) return;
+      if (!GLFW.active || !GLFW.active.dropFunc) return;
+      if (!event.dataTransfer || !event.dataTransfer.files || event.dataTransfer.files.length == 0) return;
 
       event.preventDefault();
 
@@ -757,45 +758,49 @@ var LibraryGLFW = {
       var count = event.dataTransfer.files.length;
 
       // Read and save the files to emscripten's FS
-      // TODO: lazily load?
       var written = 0;
-      for (var i = 0; i < count; ++i) {
-        (function(file) {
-          var reader = new FileReader();
-          reader.onload = function(e) {
-            var data = e.target.result;
-            var path = file.name; // TODO: to a new directory?
-            FS.writeFile(path, new Uint8Array(data), { encoding: 'binary' });
-            //console.log('wrote '+path+', size '+data.byteLength+', count '+written+' of '+count);
-            if (++written === count) {
-              console.log('calling callback');
-              Module['dynCall_viii'](GLFW.active.dropFunc, GLFW.active.id, count, filenames);
+      var drop_dir = '.glfw_dropped_files';
+      FS.createPath('/', drop_dir);
 
-              for (var i = 0; i < filenamesArray.length; ++i) _free(filenamesArray[i]);
-              _free(filenames);
+      function save(file) {
+        var path = '/' + drop_dir + '/' + file.name.replace(/\//g, '_');
+        var reader = new FileReader();
+        reader.onloadend = function(e) {
+          if (reader.readyState != 2) { // not DONE
+            ++written;
+            console.log('failed to read dropped file: '+file.name+': '+reader.error);
+            return;
+          }
+
+          var data = e.target.result;
+          FS.writeFile(path, new Uint8Array(data), { encoding: 'binary' });
+          if (++written === count) {
+            Module['dynCall_viii'](GLFW.active.dropFunc, GLFW.active.id, count, filenames);
+
+            for (var i = 0; i < filenamesArray.length; ++i) {
+              _free(filenamesArray[i]);
             }
-          };
-          reader.readAsArrayBuffer(file);
+            _free(filenames);
+          }
+        };
+        reader.readAsArrayBuffer(file);
 
-          var filename = allocate(intArrayFromString(file.name), 'i8', ALLOC_NORMAL);
-          filenamesArray.push(filename);
-          setValue(filenames + i*4, filename, 'i8*');
-        })(event.dataTransfer.files[i]);
+        var filename = allocate(intArrayFromString(path), 'i8', ALLOC_NORMAL);
+        filenamesArray.push(filename);
+        setValue(filenames + i*4, filename, 'i8*');
+      }
+
+      for (var i = 0; i < count; ++i) {
+        save(event.dataTransfer.files[i]);
       }
 
       return false;
     },
 
     onDragover: function(event) {
-      if (!GLFW.active.dropFunc) return;
+      if (!GLFW.active || !GLFW.active.dropFunc) return;
 
       event.preventDefault();
-      return false;
-    },
-
-    onDragend: function(event) {
-      if (!GLFW.active.dropFunc) return;
-
       return false;
     },
 
@@ -1097,7 +1102,6 @@ var LibraryGLFW = {
     Module["canvas"].addEventListener('mouseleave', GLFW.onMouseleave, true);
     Module["canvas"].addEventListener('drop', GLFW.onDrop, true);
     Module["canvas"].addEventListener('dragover', GLFW.onDragover, true);
-    Module["canvas"].addEventListener('dragend', GLFW.onDragend, true);
 
     Browser.resizeListeners.push(function(width, height) {
        GLFW.onCanvasResize(width, height);
@@ -1121,7 +1125,6 @@ var LibraryGLFW = {
     Module["canvas"].removeEventListener('mouseleave', GLFW.onMouseleave, true);
     Module["canvas"].removeEventListener('drop', GLFW.onDrop, true);
     Module["canvas"].removeEventListener('dragover', GLFW.onDragover, true);
-    Module["canvas"].removeEventListener('dragend', GLFW.onDragend, true);
 
 
     Module["canvas"].width = Module["canvas"].height = 1;
