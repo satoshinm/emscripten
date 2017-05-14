@@ -262,6 +262,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           continue
         if not use_js and el == '-s' and is_minus_s_for_emcc(argv, idx): # skip -s X=Y if not using js for configure
           skip_next = True
+        if not use_js and el == '--tracing':
+          pass
         else:
           yield el
         idx += 1
@@ -1282,6 +1284,9 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         shared.Settings.GLOBAL_BASE = 1024 # leave some room for mapping global vars
         assert not shared.Settings.SPLIT_MEMORY, 'WebAssembly does not support split memory'
         assert not shared.Settings.USE_PTHREADS, 'WebAssembly does not support pthreads'
+        if shared.Settings.ELIMINATE_DUPLICATE_FUNCTIONS:
+          logging.warning('for wasm there is no need to set ELIMINATE_DUPLICATE_FUNCTIONS, the binaryen optimizer does it automatically')
+          shared.Settings.ELIMINATE_DUPLICATE_FUNCTIONS = 0
         # if root was not specified in -s, it might be fixed in ~/.emscripten, copy from there
         if not shared.Settings.BINARYEN_ROOT:
           try:
@@ -1295,15 +1300,11 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         if js_opts and not force_js_opts and 'asmjs' not in shared.Settings.BINARYEN_METHOD:
           js_opts = None
           logging.debug('asm.js opts not forced by user or an option that depends them, and we do not intend to run the asm.js, so disabling and leaving opts to the binaryen optimizer')
-        if use_closure_compiler:
-          logging.warning('closure compiler is known to have issues with binaryen (FIXME)')
+        assert not use_closure_compiler == 2, 'closure compiler mode 2 assumes the code is asm.js, so not meaningful for wasm'
         # for simplicity, we always have a mem init file, which may also be imported into the wasm module.
         #  * if we also supported js mem inits we'd have 4 modes
         #  * and js mem inits are useful for avoiding a side file, but the wasm module avoids that anyhow
         memory_init_file = True
-        if shared.Building.is_wasm_only() and shared.Settings.EVAL_CTORS:
-          logging.debug('disabling EVAL_CTORS, as in wasm-only mode it hurts more than it helps. TODO: a wasm version of it')
-          shared.Settings.EVAL_CTORS = 0
         # async compilation requires wasm-only mode, and also not interpreting (the interpreter needs sync input)
         if shared.Settings.BINARYEN_ASYNC_COMPILATION == 1 and shared.Building.is_wasm_only() and 'interpret' not in shared.Settings.BINARYEN_METHOD:
           # async compilation requires a swappable module - we swap it in when it's ready
@@ -1322,9 +1323,18 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           sys.exit(1)
 
       if shared.Settings.EVAL_CTORS:
-        # this option is not a js optimizer pass, but does run the js optimizer internally, so
-        # we need to generate proper code for that
-        shared.Settings.RUNNING_JS_OPTS = 1
+        if not shared.Settings.BINARYEN:
+          # for asm.js: this option is not a js optimizer pass, but does run the js optimizer internally, so
+          # we need to generate proper code for that (for wasm, we run a binaryen tool for this)
+          shared.Settings.RUNNING_JS_OPTS = 1
+        else:
+          if 'interpret' in shared.Settings.BINARYEN_METHOD:
+            logging.warning('disabling EVAL_CTORS as the bundled interpreter confuses the ctor tool')
+            shared.Settings.EVAL_CTORS = 0
+          else:
+            # for wasm, we really want no-exit-runtime, so that atexits don't stop us
+            if not shared.Settings.NO_EXIT_RUNTIME:
+              logging.warning('you should enable  -s NO_EXIT_RUNTIME=1  so that EVAL_CTORS can work at full efficiency (it gets rid of atexit calls which might disrupt EVAL_CTORS)')
 
       if shared.Settings.ALLOW_MEMORY_GROWTH and shared.Settings.ASM_JS == 1:
         # this is an issue in asm.js, but not wasm
@@ -1363,6 +1373,9 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         if opt_level > 0:
           newargs.append('-mllvm')
           newargs.append('-disable-llvm-optzns')
+
+      if not shared.Settings.LEGALIZE_JS_FFI:
+        assert shared.Building.is_wasm_only(), 'LEGALIZE_JS_FFI incompatible with RUNNING_JS_OPTS and non-wasm BINARYEN_METHOD.'
 
       shared.Settings.EMSCRIPTEN_VERSION = shared.EMSCRIPTEN_VERSION
       shared.Settings.OPT_LEVEL = opt_level
@@ -1928,7 +1941,9 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         if opt_level >= 2:
           # simplify ifs if it is ok to make the code somewhat unreadable, and unless outlining (simplified ifs
           # with commaified code breaks late aggressive variable elimination)
-          if shared.Settings.SIMPLIFY_IFS and (debug_level == 0 or profiling) and shared.Settings.OUTLINING_LIMIT == 0: JSOptimizer.queue += ['simplifyIfs']
+          # do not do this with binaryen, as commaifying confuses binaryen call type detection (FIXME, in theory, but unimportant)
+          if shared.Settings.SIMPLIFY_IFS and (debug_level == 0 or profiling) and shared.Settings.OUTLINING_LIMIT == 0 and not shared.Settings.BINARYEN:
+            JSOptimizer.queue += ['simplifyIfs']
 
           if shared.Settings.PRECISE_F32: JSOptimizer.queue += ['optimizeFrounds']
 
@@ -1964,7 +1979,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           JSOptimizer.flush()
           shared.Building.eliminate_duplicate_funcs(final)
 
-      if shared.Settings.EVAL_CTORS and memory_init_file and debug_level < 4:
+      if shared.Settings.EVAL_CTORS and memory_init_file and debug_level < 4 and not shared.Settings.BINARYEN:
         JSOptimizer.flush()
         shared.Building.eval_ctors(final, memfile)
         if DEBUG: save_intermediate('eval-ctors', 'js')
@@ -2112,7 +2127,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         if not shared.Settings.WASM_BACKEND:
           if DEBUG:
             # save the asm.js input
-            shutil.copyfile(asm_target, os.path.join(emscripten_temp_dir, os.path.basename(asm_target)))
+            shared.safe_copy(asm_target, os.path.join(emscripten_temp_dir, os.path.basename(asm_target)))
           cmd = [os.path.join(binaryen_bin, 'asm2wasm'), asm_target, '--total-memory=' + str(shared.Settings.TOTAL_MEMORY)]
           if shared.Settings.BINARYEN_TRAP_MODE == 'js':
             cmd += ['--emit-jsified-potential-traps']
@@ -2141,6 +2156,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
             cmd += ['--mem-max=-1']
           elif shared.Settings.BINARYEN_MEM_MAX >= 0:
             cmd += ['--mem-max=' + str(shared.Settings.BINARYEN_MEM_MAX)]
+          if shared.Settings.LEGALIZE_JS_FFI != 1:
+            cmd += ['--no-legalize-javascript-ffi']
           if shared.Building.is_wasm_only():
             cmd += ['--wasm-only'] # this asm.js is code not intended to run as asm.js, it is only ever going to be wasm, an can contain special fastcomp-wasm support
           if debug_level >= 2 or profiling_funcs:
@@ -2168,7 +2185,10 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
             subprocess.check_call(cmd)
           if import_mem_init:
             # remove and forget about the mem init file in later processing; it does not need to be prefetched in the html, etc.
-            os.unlink(memfile)
+            if DEBUG:
+              safe_move(memfile, os.path.join(emscripten_temp_dir, os.path.basename(memfile)))
+            else:
+              os.unlink(memfile)
             memory_init_file = False
           log_time('asm2wasm')
         if shared.Settings.BINARYEN_PASSES:
@@ -2191,6 +2211,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           for script in shared.Settings.BINARYEN_SCRIPTS.split(','):
             logging.debug('running binaryen script: ' + script)
             subprocess.check_call([shared.PYTHON, os.path.join(binaryen_scripts, script), final, wasm_text_target], env=script_env)
+        if shared.Settings.EVAL_CTORS:
+          shared.Building.eval_ctors(final, wasm_binary_target, binaryen_bin)
         # after generating the wasm, do some final operations
         if not shared.Settings.WASM_BACKEND:
           if shared.Settings.SIDE_MODULE:

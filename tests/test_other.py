@@ -520,8 +520,12 @@ f.close()
           # Run Cmake
           cmd = [emconfigure, 'cmake'] + cmake_args + ['-G', generator, cmakelistsdir]
 
+          env = os.environ.copy()
+          # https://github.com/kripken/emscripten/pull/5145: Check that CMake works even if EMCC_SKIP_SANITY_CHECK=1 is passed.
+          if test_dir == 'target_html':
+            env['EMCC_SKIP_SANITY_CHECK'] = '1'
           print str(cmd)
-          ret = Popen(cmd, stdout=None if EM_BUILD_VERBOSE_LEVEL >= 2 else PIPE, stderr=None if EM_BUILD_VERBOSE_LEVEL >= 1 else PIPE).communicate()
+          ret = Popen(cmd, env=env, stdout=None if EM_BUILD_VERBOSE_LEVEL >= 2 else PIPE, stderr=None if EM_BUILD_VERBOSE_LEVEL >= 1 else PIPE).communicate()
           if len(ret) > 1 and ret[1] != None and len(ret[1].strip()) > 0:
             logging.error(ret[1]) # If there were any errors, print them directly to console for diagnostics.
           if len(ret) > 1 and ret[1] != None and 'error' in ret[1].lower():
@@ -2293,7 +2297,7 @@ int f() {
           for tf in testFiles:
             f.write(open(tf, 'rb').read())
 
-        output = run_js(self.in_dir('a.out.js'), stdout=PIPE, stderr=PIPE, full_output=True, assert_returncode=0)
+        output = run_js(self.in_dir('a.out.js'), stdout=PIPE, stderr=PIPE, full_output=True, assert_returncode=0, engine=NODE_JS)
         assert "FAIL" not in output, output
 
   def test_llvm_nativizer(self):
@@ -5342,49 +5346,50 @@ int main(void) {
           del os.environ['EMCONFIGURE_JS']
 
   def test_emcc_c_multi(self):
-    def test(args, llvm_opts=None):
-      print args
-      lib = r'''
-        int mult() { return 1; }
-      '''
+    with clean_write_access_to_canonical_temp_dir():
+      def test(args, llvm_opts=None):
+        print args
+        lib = r'''
+          int mult() { return 1; }
+        '''
 
-      lib_name = 'libA.c'
-      open(lib_name, 'w').write(lib)
-      main = r'''
-        #include <stdio.h>
-        int mult();
-        int main() {
-          printf("result: %d\n", mult());
-          return 0;
-        }
-      '''
-      main_name = 'main.c'
-      open(main_name, 'w').write(main)
+        lib_name = 'libA.c'
+        open(lib_name, 'w').write(lib)
+        main = r'''
+          #include <stdio.h>
+          int mult();
+          int main() {
+            printf("result: %d\n", mult());
+            return 0;
+          }
+        '''
+        main_name = 'main.c'
+        open(main_name, 'w').write(main)
 
-      if os.environ.get('EMCC_DEBUG'): return self.skip('cannot run in debug mode')
-      try:
-        os.environ['EMCC_DEBUG'] = '1'
-        out, err = Popen([PYTHON, EMCC, '-c', main_name, lib_name] + args, stderr=PIPE).communicate()
-      finally:
-        del os.environ['EMCC_DEBUG']
+        if os.environ.get('EMCC_DEBUG'): return self.skip('cannot run in debug mode')
+        try:
+          os.environ['EMCC_DEBUG'] = '1'
+          out, err = Popen([PYTHON, EMCC, '-c', main_name, lib_name] + args, stderr=PIPE).communicate()
+        finally:
+          del os.environ['EMCC_DEBUG']
 
-      VECTORIZE = '-disable-loop-vectorization'
+        VECTORIZE = '-disable-loop-vectorization'
 
-      if args:
-        assert err.count(VECTORIZE) == 2, err # specified twice, once per file
+        if args:
+          assert err.count(VECTORIZE) == 2, err # specified twice, once per file
 
-        assert err.count('emcc: LLVM opts: ' + llvm_opts + ' ' + VECTORIZE) == 2, err # exactly once per invocation of optimizer
-      else:
-        assert err.count(VECTORIZE) == 0, err # no optimizations
+          assert err.count('emcc: LLVM opts: ' + llvm_opts + ' ' + VECTORIZE) == 2, err # exactly once per invocation of optimizer
+        else:
+          assert err.count(VECTORIZE) == 0, err # no optimizations
 
-      Popen([PYTHON, EMCC, main_name.replace('.c', '.o'), lib_name.replace('.c', '.o')]).communicate()
+        Popen([PYTHON, EMCC, main_name.replace('.c', '.o'), lib_name.replace('.c', '.o')]).communicate()
 
-      self.assertContained('result: 1', run_js(os.path.join(self.get_dir(), 'a.out.js')))
+        self.assertContained('result: 1', run_js(os.path.join(self.get_dir(), 'a.out.js')))
 
-    test([])
-    test(['-O2'], '-O3')
-    test(['-Oz'], '-Oz')
-    test(['-Os'], '-Os')
+      test([])
+      test(['-O2'], '-O3')
+      test(['-Oz'], '-Oz')
+      test(['-Os'], '-Os')
 
   def test_export_all_3142(self):
     open('src.cpp', 'w').write(r'''
@@ -7502,6 +7507,52 @@ int main() {
         del os.environ['EMCC_DEBUG']
       print 'sizes:', sizes
       assert sizes[1] < sizes[0], 'ignoring implicit traps must reduce code size'
+
+  # test disabling of JS FFI legalization
+  def test_legalize_js_ffi(self):
+    with clean_write_access_to_canonical_temp_dir():
+      for (args,js_ffi) in [
+          (['-s', 'LEGALIZE_JS_FFI=1', '-s', 'SIDE_MODULE=1', '-O2', ], True),
+          (['-s', 'LEGALIZE_JS_FFI=0', '-s', 'SIDE_MODULE=1', '-O2', ], False),
+          (['-s', 'LEGALIZE_JS_FFI=0', '-s', 'SIDE_MODULE=1', '-O0', ], False),
+          (['-s', 'LEGALIZE_JS_FFI=0', '-s', 'SIDE_MODULE=0', '-O0'], False),
+        ]:
+        print args
+        try_delete('a.out.wasm')
+        try_delete('a.out.wast')
+        cmd = [PYTHON, EMCC, path_from_root('tests', 'other', 'ffi.c'), '-s', 'WASM=1', '-g', '-o', 'a.out.js'] + args
+        print ' '.join(cmd)
+        proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        output, err = proc.communicate()
+        assert proc.returncode == 0
+        text = open('a.out.wast').read()
+        #print "text: %s" % text
+        e_add_f32 = re.search('func \$_add_f \(param \$*. f32\) \(param \$*. f32\) \(result f32\)', text)
+        i_i64_i32 = re.search('import .*"_import_ll" .*\(param i32 i32\) \(result i32\)', text)
+        i_f32_f64 = re.search('import .*"_import_f" .*\(param f64\) \(result f64\)', text)
+        i_i64_i64 = re.search('import .*"_import_ll" .*\(param i64\) \(result i64\)', text)
+        i_f32_f32 = re.search('import .*"_import_f" .*\(param f32\) \(result f32\)', text)
+        e_i64_i32 = re.search('func \$_add_ll \(param \$*. i32\) \(param \$*. i32\) \(param \$*. i32\) \(param \$*. i32\) \(result i32\)', text)
+        e_f32_f64 = re.search('func \$legalstub\$_add_f \(param \$*. f64\) \(param \$*. f64\) \(result f64\)', text)
+        e_i64_i64 = re.search('func \$_add_ll \(param \$*. i64\) \(param \$*. i64\) \(result i64\)', text)
+        #print e_add_f32, i_i64_i32, i_f32_f64, i_i64_i64, i_f32_f32, e_i64_i32, e_f32_f64, e_i64_i64
+        assert e_add_f32, 'add_f export missing'
+        if js_ffi:
+          assert i_i64_i32,     'i64 not converted to i32 in imports'
+          assert i_f32_f64,     'f32 not converted to f64 in imports'
+          assert not i_i64_i64, 'i64 not converted to i32 in imports'
+          assert not i_f32_f32, 'f32 not converted to f64 in imports'
+          assert e_i64_i32,     'i64 not converted to i32 in exports'
+          assert e_f32_f64,     'f32 not converted to f64 in exports'
+          assert not e_i64_i64, 'i64 not converted to i32 in exports'
+        else:
+          assert not i_i64_i32, 'i64 converted to i32 in imports'
+          assert not i_f32_f64, 'f32 converted to f64 in imports'
+          assert i_i64_i64,     'i64 converted to i32 in imports'
+          assert i_f32_f32,     'f32 converted to f64 in imports'
+          assert not e_i64_i32, 'i64 converted to i32 in exports'
+          assert not e_f32_f64, 'f32 converted to f64 in exports'
+          assert e_i64_i64,     'i64 converted to i32 in exports'
 
   def test_sysconf_phys_pages(self):
     for args, expected in [
